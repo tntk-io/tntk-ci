@@ -1,0 +1,10 @@
+env: "placeholder"
+name: "placeholder"
+account_id: "placeholder"
+aws_region: "placeholder"
+
+code:
+  imageURI: "placeholder"
+
+mapping:
+  eventSourceARN: "placeholder"

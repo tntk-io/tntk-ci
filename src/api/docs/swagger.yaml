@@ -1,0 +1,65 @@
+info:
+  contact: {}
+paths:
+  /auth/sign-in:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: string
+      summary: Authenticate and receive token
+  /auth/sign-up:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: string
+      summary: Sign-up new user
+  /file/:name:
+    get:
+      description: Downloads file from s3 bucket throught server
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Download PDF file from server
+      tags:
+      - example
+  /files:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: List all files available for download
+      tags:
+      - example
+  /request:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: string
+      summary: Post new request for processing
+swagger: "2.0"

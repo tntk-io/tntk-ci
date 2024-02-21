@@ -1,0 +1,13 @@
+---
+# Source: demoapp/charts/lambda/templates/lambda.yaml
+apiVersion: lambda.services.k8s.aws/v1alpha1
+kind: EventSourceMapping
+metadata:
+  name: {{ .Values.env }}-{{ .Values.name }}
+  namespace: ack-lambda
+  annotations:
+    services.k8s.aws/region: {{ .Values.aws_region }}
+spec:
+  functionName: {{ .Values.env }}-{{ .Values.name }}
+  eventSourceARN: {{ .Values.mapping.eventSourceARN }}
+  batchSize: 10
