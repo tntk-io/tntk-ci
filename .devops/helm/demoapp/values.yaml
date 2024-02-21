@@ -1,0 +1,126 @@
+
+
+# Default values for api.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+api:
+  fullnameOverride: "api"
+  replicaCount: 1
+
+  image:
+    repository: nginx
+    pullPolicy: IfNotPresent
+    tag: ""
+
+  configmapData:
+    SSM_PREFIX: "/placeholder"
+    AWS_REGION: "placeholder"
+    S3_BUCKET_NAME: "ssm:/s3_bucket/for_output_files/name"
+    DYNAMODB_TABLE_NAME: "ssm:/dynamodb/table_name"
+    DB_HOST: "ssm:/rds/endpoint"
+    DB_PORT: "3306"
+    DB_USERNAME: "ssm:/rds/username"
+    DB_PASSWORD: "ssm:/rds/password"
+    DB_NAME: "ssm:/rds/db_name"
+    SQS_QUEUE_NAME: "ssm:/sqs/name"
+    API_SOCKET: ":80"
+
+  serviceAccount:
+    create: false
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources: {}
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+
+  podAnnotations: {}
+
+  podSecurityContext: {}
+
+  securityContext: {}
+
+
+ui:
+  fullnameOverride: "ui"
+  replicaCount: 1
+
+  image:
+    repository: nginx
+    pullPolicy: IfNotPresent
+    tag: ""
+
+  configmapData:
+    PORT: "80"
+
+  serviceAccount:
+    create: false
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources: {}
+
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+
+  podAnnotations: {}
+
+  podSecurityContext: {}
+
+  securityContext: {}
+
+
+nameOverride: ""
+fullnameOverride: ""
+
+ingress:
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations: {}
+      # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+    hosts:
+      - host: demo.projects.tentech.vok.today
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ui
+                port:
+                  number: 80
+    tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+
+global:
+  nodeSelector: {}
+
+  tolerations: []
+
+  affinity: {}
+
+  service:
+    type: ClusterIP
+    port: 80

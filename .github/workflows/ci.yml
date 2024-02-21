@@ -1,0 +1,127 @@
+name: Integration
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: ["prod"]
+  pull_request:
+    branches: ["prod"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+env:
+  ENVIRONMENT: ${{ github.ref_name }}
+  ACCOUNT_ID: ${{ vars.ACCOUNT_ID }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  BASE_DOMAIN: ${{ vars.BASE_DOMAIN }}
+  APPLICATION_NAME: ${{ vars.APPLICATION_NAME }}
+  APPLICATION_NAMESPACE: ${{ vars.APPLICATION_NAMESPACE }}
+  CD_DESTINATION_OWNER: ${{ vars.CD_DESTINATION_OWNER }}
+  CD_PROJECT: ${{ vars.CD_PROJECT }}
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  get_inputs:
+    outputs:
+      sqs_arn: ${{ steps.aws_resources.outputs.sqs_arn }}
+      sha8: ${{ steps.slug.outputs.sha8 }}
+    runs-on: self-hosted
+    steps:
+      - name: Get short SHA
+        id: slug
+        run: echo "sha8=$(echo ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4 # More information on this action can be found below in the 'AWS Credentials' section
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: "false"
+      - name: Install AWS cli
+        uses: unfor19/install-aws-cli-action@v1
+      - name: Get SQS queue arn
+        id: aws_resources
+        run: |
+          echo "sqs_arn=$(aws sqs get-queue-attributes --queue-url $(aws sqs list-queues --region $AWS_REGION | jq -r .QueueUrls[0]) --attribute-names QueueArn --region $AWS_REGION | jq -r .Attributes.QueueArn)" >> $GITHUB_OUTPUT
+
+  build_images_and_push:
+    needs: [get_inputs]
+    runs-on: self-hosted
+    outputs:
+      registry: ${{ steps.login-ecr.outputs.registry }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4 # More information on this action can be found below in the 'AWS Credentials' section
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: "false"
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build api image and push to ECR
+        env:
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMPONENT_NAME: "api"
+        run: |
+          docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
+          docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
+      - name: Build ui image and push to ECR
+        env:
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMPONENT_NAME: "ui"
+        run: |
+          docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/$COMPONENT_NAME/
+          docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
+      - name: Build lambda image and push to ECR
+        env:
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          COMPONENT_NAME: "lambda"
+        run: |
+          docker build -f .devops/docker/$COMPONENT_NAME.dockerfile -t $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8 src/api/
+          docker push $REGISTRY/$ENVIRONMENT/$COMPONENT_NAME:$SHA8
+
+  k8s_manifest_storing:
+    needs: [build_images_and_push, get_inputs]
+    runs-on: self-hosted
+    container:
+      image: alpine/helm:latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: deploy to k8s
+        env:
+          REGISTRY: ${{ needs.build_images_and_push.outputs.registry }}
+          SHA8: ${{ needs.get_inputs.outputs.sha8 }}
+          SQS_ARN: ${{ needs.get_inputs.outputs.sqs_arn }}
+        run: |
+          rm -rf manifest
+          helm template $APPLICATION_NAME .devops/helm/demoapp -f .devops/helm/demoapp/values.yaml  --create-namespace -n $APPLICATION_NAMESPACE --output-dir manifest \
+            --set api.image.repository=$REGISTRY/$ENVIRONMENT/api \
+            --set api.image.tag=$SHA8 \
+            --set ui.image.repository=$REGISTRY/$ENVIRONMENT/ui \
+            --set ui.image.tag=$SHA8 \
+            --set ingress.ingress.hosts[0].host=$APPLICATION_NAME.$ENVIRONMENT.$BASE_DOMAIN \
+            --set api.configmapData.SSM_PREFIX=/$ENVIRONMENT \
+            --set api.configmapData.AWS_REGION=$AWS_REGION \
+            --set lambda.code.imageURI=$REGISTRY/$ENVIRONMENT/lambda:$SHA8 \
+            --set lambda.mapping.eventSourceARN=$SQS_ARN \
+            --set lambda.name=lambda \
+            --set lambda.env=$ENVIRONMENT \
+            --set lambda.account_id=$ACCOUNT_ID \
+            --set lambda.aws_region=$AWS_REGION
+      - name: Pushes to another repository
+        uses: cpina/github-action-push-to-another-repository@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+          CD_DESTINATION: ${{ secrets.API_TOKEN_GITHUB }}
+        with:
+          source-directory: "manifest"
+          target-directory: "demoapp"
+          destination-github-username: ${{ env.CD_DESTINATION_OWNER }}
+          destination-repository-name: ${{ env.CD_PROJECT }}
+          target-branch: ${{ env.ENVIRONMENT }}

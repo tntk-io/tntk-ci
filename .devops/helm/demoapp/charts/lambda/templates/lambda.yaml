@@ -1,0 +1,23 @@
+apiVersion: lambda.services.k8s.aws/v1alpha1
+kind: Function
+metadata:
+  name: {{ .Values.env }}-{{ .Values.name }}
+  namespace: ack-lambda
+  annotations:
+    services.k8s.aws/region: {{ .Values.aws_region }}
+spec:
+  name: {{ .Values.env }}-{{ .Values.name }}
+  packageType: Image
+  code:
+    imageURI: {{ .Values.code.imageURI }}
+  role: arn:aws:iam::{{ .Values.account_id }}:role/{{ .Values.env }}-lambda-execution-role
+  description: function created by ACK lambda-controller
+  timeout: 30
+  memorySize: 256
+  environment:
+    variables:
+      S3_BUCKET_NAME: {{ .Values.env }}-app-output-files-{{ .Values.account_id }}
+      DYNAMODB_TABLE_NAME: {{ .Values.env }}-pdf-files-per-user-descriptors
+
+
+
